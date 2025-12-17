@@ -3,7 +3,8 @@ name: Auto-Create PR and Enable Auto-Merge
 on:
   push:
     branches:
-      - 'ui@v*'   # Adjust pattern, e.g., '*@v*' for all versioned branches, or add multiple like 'feature/*'
+      - '**'   # This matches EVERY branch
+  workflow_dispatch: # Allows you to run it manually too
 
 permissions:
   contents: write
