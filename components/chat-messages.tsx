@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import SqlMessage from "./sql-message";
 import TypingIndicator from "./type-indicator";
+// import ChatSkeleton from "./chat-skeleton";
 
 interface Message {
     role: "user" | "assistant";
@@ -73,8 +74,9 @@ export default function ChatMessages() {
 
             {isTyping && (
                 <div className="flex justify-start">
-                    <div className="rounded-lg bg-muted px-4 py-3">
+                    <div className="max-w-[80%] rounded-lg bg-muted px-4 py-3">
                         <TypingIndicator />
+                        {/* <ChatSkeleton /> */}
                     </div>
                 </div>
             )}
