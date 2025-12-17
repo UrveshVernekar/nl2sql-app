@@ -23,6 +23,7 @@ export default function SqlMessage({ sql }: { sql: string }) {
                     variant="ghost"
                     size="icon"
                     onClick={handleCopy}
+                    className="cursor-pointer"
                 >
                     {copied ? <Check size={14} /> : <Copy size={14} />}
                 </Button>

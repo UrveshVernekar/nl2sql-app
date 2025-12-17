@@ -40,6 +40,7 @@ export default function Topbar() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="cursor-pointer"
             >
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </Button>
