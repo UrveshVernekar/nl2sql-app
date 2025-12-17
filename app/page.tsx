@@ -7,7 +7,9 @@ export default function HomePage() {
   return (
     <div className="flex h-screen w-full overflow-hidden">
       {/* Sidebar */}
-      <Sidebar />
+      <div className="hidden md:flex">
+        <Sidebar />
+      </div>
 
       {/* Main Content */}
       <div className="flex flex-1 flex-col">

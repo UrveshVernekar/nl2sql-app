@@ -31,7 +31,7 @@ export default function ChatInput() {
                         }
                     }}
                     rows={2}
-                    className="flex-1 resize-none"
+                    className="flex-1 resize-none text-base"
                 />
                 <Button onClick={handleSend}>Send</Button>
             </div>
