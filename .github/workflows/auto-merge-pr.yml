@@ -1,0 +1,36 @@
+name: Auto-Create PR and Enable Auto-Merge
+
+on:
+  push:
+    branches:
+      - 'ui@v*'   # Adjust pattern, e.g., '*@v*' for all versioned branches, or add multiple like 'feature/*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr-and-automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create or update PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref_name }}
+          base: main
+          title: "Merge ${{ github.ref_name }} into main"
+          body: "Automated PR for changes in ${{ github.ref_name }}."
+          commit-message: "Update from ${{ github.ref_name }}"
+          delete-branch: false  # Set to true if you want to delete after merge
+
+      - name: Enable auto-merge on PR
+        if: steps.create-pull-request.outputs.pull-request-number != ''
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.create-pull-request.outputs.pull-request-number }}
+          merge-method: squash  # Or 'merge' or 'rebase' as preferred
