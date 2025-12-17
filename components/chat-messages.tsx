@@ -16,36 +16,60 @@ export default function ChatMessages() {
     const [isTyping, setIsTyping] = useState(false);
 
     useEffect(() => {
-        const handler = (e: CustomEvent<string>) => {
+        const sendHandler = (e: Event) => {
+            const detail = (e as CustomEvent<string>).detail;
+
+
             const userMessage: Message = {
                 role: "user",
-                content: e.detail,
+                content: detail,
             };
+
 
             setMessages((prev) => [...prev, userMessage]);
             setIsTyping(true);
 
-            // 🔹 Mock assistant response
+
             setTimeout(() => {
                 const botMessage: Message = {
                     role: "assistant",
                     content: "Here is the SQL generated for your query:",
-                    sql: `
-                            SELECT *
-                            FROM users
-                            WHERE created_at >= '2024-01-01';
-                        `,
+                    sql: `SELECT *
+FROM orders
+WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
                 };
+
 
                 setMessages((prev) => [...prev, botMessage]);
                 setIsTyping(false);
             }, 1200);
         };
 
-        window.addEventListener("send-message", handler as EventListener);
-        return () =>
-            window.removeEventListener("send-message", handler as EventListener);
+
+        const newChatHandler = () => {
+            setMessages([]);
+            setIsTyping(false);
+        };
+
+
+        window.addEventListener("send-message", sendHandler);
+        window.addEventListener("new-chat", newChatHandler);
+
+
+        return () => {
+            window.removeEventListener("send-message", sendHandler);
+            window.removeEventListener("new-chat", newChatHandler);
+        };
     }, []);
+
+
+    if (messages.length === 0) {
+        return (
+            <div className="mx-auto max-w-3xl text-center text-muted-foreground">
+                Start a new chat by asking a question about your data.
+            </div>
+        );
+    }
 
     return (
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -57,8 +81,8 @@ export default function ChatMessages() {
                 >
                     <div
                         className={`max-w-[80%] rounded-lg px-4 py-3 text-sm whitespace-pre-wrap ${msg.role === "user"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-foreground"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground"
                             }`}
                     >
                         {msg.content}

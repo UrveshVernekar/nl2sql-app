@@ -9,13 +9,11 @@ import { useState } from "react";
 export default function ChatInput() {
     const [value, setValue] = useState("");
 
-
     const handleSend = () => {
         if (!value.trim()) return;
         window.dispatchEvent(new CustomEvent("send-message", { detail: value }));
         setValue("");
     };
-
 
     return (
         <div className="border-t bg-background p-4">
