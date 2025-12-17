@@ -25,7 +25,10 @@ export default function MobileSidebar() {
                 </Button>
             </SheetTrigger>
 
-            <SheetContent side="left" className="p-0 w-64">
+            <SheetContent
+                side="left"
+                className="p-0 w-64 transition-transform duration-300 ease-out"
+            >
                 {/* ✅ REQUIRED for accessibility */}
                 <VisuallyHidden>
                     <SheetTitle>Navigation</SheetTitle>

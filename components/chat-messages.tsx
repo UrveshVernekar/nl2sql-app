@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import SqlMessage from "./sql-message";
 import TypingIndicator from "./type-indicator";
 // import ChatSkeleton from "./chat-skeleton";
+import { motion } from "framer-motion";
 
 interface Message {
     role: "user" | "assistant";
@@ -25,10 +26,8 @@ export default function ChatMessages() {
                 content: detail,
             };
 
-
             setMessages((prev) => [...prev, userMessage]);
             setIsTyping(true);
-
 
             setTimeout(() => {
                 const botMessage: Message = {
@@ -39,29 +38,24 @@ FROM orders
 WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
                 };
 
-
                 setMessages((prev) => [...prev, botMessage]);
                 setIsTyping(false);
             }, 1200);
         };
-
 
         const newChatHandler = () => {
             setMessages([]);
             setIsTyping(false);
         };
 
-
         window.addEventListener("send-message", sendHandler);
         window.addEventListener("new-chat", newChatHandler);
-
 
         return () => {
             window.removeEventListener("send-message", sendHandler);
             window.removeEventListener("new-chat", newChatHandler);
         };
     }, []);
-
 
     if (messages.length === 0) {
         return (
@@ -74,10 +68,12 @@ WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
     return (
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {messages.map((msg, idx) => (
-                <div
+                <motion.div
                     key={idx}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"
-                        }`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                     <div
                         className={`max-w-[80%] rounded-lg px-4 py-3 text-sm whitespace-pre-wrap ${msg.role === "user"
@@ -93,7 +89,7 @@ WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
                             </div>
                         )}
                     </div>
-                </div>
+                </motion.div>
             ))}
 
             {isTyping && (

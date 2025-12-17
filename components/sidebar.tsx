@@ -18,6 +18,7 @@ export default function Sidebar() {
                     size="icon"
                     onClick={handleNewChat}
                     aria-label="New chat"
+                    className="cursor-pointer"
                 >
                     <Plus size={16} />
                 </Button>

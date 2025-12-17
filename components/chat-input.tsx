@@ -1,10 +1,8 @@
 "use client";
 
-
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-
 
 export default function ChatInput() {
     const [value, setValue] = useState("");
@@ -31,7 +29,12 @@ export default function ChatInput() {
                     rows={2}
                     className="flex-1 resize-none text-base"
                 />
-                <Button onClick={handleSend}>Send</Button>
+                <Button
+                    className=" cursor-pointer transition-transform active:scale-95"
+                    onClick={handleSend}
+                >
+                    Send
+                </Button>
             </div>
         </div>
     );
