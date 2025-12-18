@@ -5,11 +5,17 @@ import SqlMessage from "./sql-message";
 import TypingIndicator from "./type-indicator";
 // import ChatSkeleton from "./chat-skeleton";
 import { motion } from "framer-motion";
+import { sendQuery } from "@/lib/api";
+import QueryResults from "./query-results";
 
 interface Message {
     role: "user" | "assistant";
     content: string;
     sql?: string;
+    results?: {
+        columns: string[];
+        rows: (string | number | boolean | null)[][];
+    };
 }
 
 export default function ChatMessages() {
@@ -17,30 +23,96 @@ export default function ChatMessages() {
     const [isTyping, setIsTyping] = useState(false);
 
     useEffect(() => {
-        const sendHandler = (e: Event) => {
-            const detail = (e as CustomEvent<string>).detail;
+        //         const sendHandler = (e: Event) => {
+        //             const detail = (e as CustomEvent<string>).detail;
 
+
+        //             const userMessage: Message = {
+        //                 role: "user",
+        //                 content: detail,
+        //             };
+
+        //             setMessages((prev) => [...prev, userMessage]);
+        //             setIsTyping(true);
+
+        //             setTimeout(() => {
+        //                 const botMessage: Message = {
+        //                     role: "assistant",
+        //                     content: "Here is the SQL generated for your query:",
+        //                     sql: `SELECT *
+        // FROM orders
+        // WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
+        //                 };
+
+        //                 setMessages((prev) => [...prev, botMessage]);
+        //                 setIsTyping(false);
+        //             }, 1200);
+        //         };
+
+        const sendHandler = async (e: Event) => {
+            const detail = (e as CustomEvent<string>).detail;
 
             const userMessage: Message = {
                 role: "user",
                 content: detail,
             };
 
+            // 1️⃣ Show user message immediately
             setMessages((prev) => [...prev, userMessage]);
             setIsTyping(true);
 
-            setTimeout(() => {
-                const botMessage: Message = {
-                    role: "assistant",
-                    content: "Here is the SQL generated for your query:",
-                    sql: `SELECT *
-FROM orders
-WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
-                };
+            try {
+                // 2️⃣ Call backend
+                const data = await sendQuery(detail);
 
-                setMessages((prev) => [...prev, botMessage]);
+                // 3️⃣ Handle backend response
+                if (data.sql) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            role: "assistant",
+                            content: "Here is the SQL generated for your query:",
+                            sql: data.sql,
+                            results: data.results,
+                        },
+                    ]);
+                } else if (data.clarification_required) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            role: "assistant",
+                            content: data.questions.join(" "),
+                        },
+                    ]);
+                } else if (data.error) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            role: "assistant",
+                            content: "I couldn’t generate SQL for that query.",
+                        },
+                    ]);
+                } else {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            role: "assistant",
+                            content: "Unexpected response from backend.",
+                        },
+                    ]);
+                }
+            } catch (err) {
+                console.error(err);
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        role: "assistant",
+                        content: "Error connecting to the backend.",
+                    },
+                ]);
+            } finally {
                 setIsTyping(false);
-            }, 1200);
+            }
         };
 
         const newChatHandler = () => {
@@ -87,6 +159,13 @@ WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
                             <div className="mt-3">
                                 <SqlMessage sql={msg.sql} />
                             </div>
+                        )}
+
+                        {msg.results && (
+                            <QueryResults
+                                columns={msg.results.columns}
+                                rows={msg.results.rows}
+                            />
                         )}
                     </div>
                 </motion.div>
