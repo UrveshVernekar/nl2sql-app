@@ -7,8 +7,16 @@ import TypingIndicator from "./type-indicator";
 import { motion } from "framer-motion";
 import { sendQuery } from "@/lib/api";
 import QueryResults from "./query-results";
+import { v4 as uuidv4 } from "uuid";
+import {
+    loadChats,
+    saveChats,
+    getActiveChatId,
+    setActiveChatId,
+    StoredChat,
+} from "@/lib/chat-storage";
 
-interface Message {
+export interface Message {
     role: "user" | "assistant";
     content: string;
     sql?: string;
@@ -18,37 +26,51 @@ interface Message {
     };
 }
 
+function generateTitleFromMessage(text: string) {
+    return text.length > 40 ? text.slice(0, 40) + "…" : text;
+}
+
 export default function ChatMessages() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isTyping, setIsTyping] = useState(false);
 
     useEffect(() => {
-        //         const sendHandler = (e: Event) => {
-        //             const detail = (e as CustomEvent<string>).detail;
+        const chats = loadChats();
+        const activeId = getActiveChatId();
 
+        if (chats.length > 0 && activeId) {
+            const activeChat = chats.find((c: StoredChat) => c.id === activeId);
+            if (activeChat) {
+                setMessages(activeChat.messages);
+                return;
+            }
+        }
 
-        //             const userMessage: Message = {
-        //                 role: "user",
-        //                 content: detail,
-        //             };
+        // No chat exists → create first chat
+        const newChatId = uuidv4();
+        const newChat: StoredChat = {
+            id: newChatId,
+            createdAt: Date.now(),
+            messages: [],
+        };
 
-        //             setMessages((prev) => [...prev, userMessage]);
-        //             setIsTyping(true);
+        saveChats([newChat]);
+        setActiveChatId(newChatId);
+    }, []);
 
-        //             setTimeout(() => {
-        //                 const botMessage: Message = {
-        //                     role: "assistant",
-        //                     content: "Here is the SQL generated for your query:",
-        //                     sql: `SELECT *
-        // FROM orders
-        // WHERE order_date >= CURRENT_DATE - INTERVAL '30 days';`,
-        //                 };
+    useEffect(() => {
+        const chats = loadChats();
+        const activeId = getActiveChatId();
+        if (!activeId) return;
 
-        //                 setMessages((prev) => [...prev, botMessage]);
-        //                 setIsTyping(false);
-        //             }, 1200);
-        //         };
+        const updatedChats = chats.map((chat: StoredChat) =>
+            chat.id === activeId ? { ...chat, messages } : chat
+        );
 
+        saveChats(updatedChats);
+    }, [messages]);
+
+    useEffect(() => {
         const sendHandler = async (e: Event) => {
             const detail = (e as CustomEvent<string>).detail;
 
@@ -56,6 +78,19 @@ export default function ChatMessages() {
                 role: "user",
                 content: detail,
             };
+
+            const chats = loadChats();
+            const activeId = getActiveChatId();
+
+            if (activeId) {
+                const chat = chats.find((c: StoredChat) => c.id === activeId);
+
+                // Auto-title only if not already titled
+                if (chat && !chat.title) {
+                    chat.title = generateTitleFromMessage(detail);
+                    saveChats([...chats]);
+                }
+            }
 
             // 1️⃣ Show user message immediately
             setMessages((prev) => [...prev, userMessage]);
@@ -116,16 +151,41 @@ export default function ChatMessages() {
         };
 
         const newChatHandler = () => {
+            const chats = loadChats();
+
+            const newChatId = uuidv4();
+            const newChat: StoredChat = {
+                id: newChatId,
+                createdAt: Date.now(),
+                messages: [],
+            };
+
+            saveChats([...chats, newChat]);
+            setActiveChatId(newChatId);
+
             setMessages([]);
+            setIsTyping(false);
+        };
+
+        const switchChatHandler = (e: Event) => {
+            const chatId = (e as CustomEvent<string>).detail;
+            const chats = loadChats();
+
+            const chat = chats.find((c: StoredChat) => c.id === chatId);
+            if (!chat) return;
+
+            setMessages(chat.messages);
             setIsTyping(false);
         };
 
         window.addEventListener("send-message", sendHandler);
         window.addEventListener("new-chat", newChatHandler);
+        window.addEventListener("switch-chat", switchChatHandler);
 
         return () => {
             window.removeEventListener("send-message", sendHandler);
             window.removeEventListener("new-chat", newChatHandler);
+            window.removeEventListener("switch-chat", switchChatHandler);
         };
     }, []);
 
