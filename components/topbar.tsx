@@ -6,7 +6,6 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import MobileSidebar from "./mobile-sidebar";
 
-
 export default function Topbar() {
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
