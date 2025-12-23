@@ -5,6 +5,7 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import MobileSidebar from "./mobile-sidebar";
+import { logout } from "@/lib/auth";
 
 export default function Topbar() {
     const { theme, setTheme } = useTheme();
@@ -35,14 +36,27 @@ export default function Topbar() {
                 </h1>
             </div>
 
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="cursor-pointer"
-            >
-                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            </Button>
+            <div className="flex items-center justify-between gap-2">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    className="cursor-pointer"
+                >
+                    {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+                </Button>
+
+                <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                        logout();
+                        window.location.href = "/login";
+                    }}
+                >
+                    Logout
+                </Button>
+            </div>
         </header>
     );
 }
