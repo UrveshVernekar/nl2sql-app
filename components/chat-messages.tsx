@@ -1,20 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { motion } from "framer-motion";
 import SqlMessage from "./sql-message";
 import TypingIndicator from "./type-indicator";
-// import ChatSkeleton from "./chat-skeleton";
-import { motion } from "framer-motion";
-import { sendQuery } from "@/lib/api";
 import QueryResults from "./query-results";
-import { v4 as uuidv4 } from "uuid";
-import {
-    loadChats,
-    saveChats,
-    getActiveChatId,
-    setActiveChatId,
-    StoredChat,
-} from "@/lib/chat-storage";
+import { sendQuery, fetchMessages, createChat } from "@/lib/api";
 
 export interface Message {
     role: "user" | "assistant";
@@ -26,81 +17,137 @@ export interface Message {
     };
 }
 
-function generateTitleFromMessage(text: string) {
-    return text.length > 40 ? text.slice(0, 40) + "…" : text;
-}
-
 export default function ChatMessages() {
+    const activeChatRef = useRef<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [isTyping, setIsTyping] = useState(false);
+    const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
-    useEffect(() => {
-        const chats = loadChats();
-        const activeId = getActiveChatId();
-
-        if (chats.length > 0 && activeId) {
-            const activeChat = chats.find((c: StoredChat) => c.id === activeId);
-            if (activeChat) {
-                setMessages(activeChat.messages);
-                return;
-            }
-        }
-
-        // No chat exists → create first chat
-        const newChatId = uuidv4();
-        const newChat: StoredChat = {
-            id: newChatId,
-            createdAt: Date.now(),
-            messages: [],
-        };
-
-        saveChats([newChat]);
-        setActiveChatId(newChatId);
-    }, []);
-
-    useEffect(() => {
-        const chats = loadChats();
-        const activeId = getActiveChatId();
-        if (!activeId) return;
-
-        const updatedChats = chats.map((chat: StoredChat) =>
-            chat.id === activeId ? { ...chat, messages } : chat
+    function mergeMessages(
+        local: Message[],
+        remote: Message[]
+    ): Message[] {
+        const seen = new Set(
+            local.map(m => `${m.role}:${m.content}`)
         );
 
-        saveChats(updatedChats);
-    }, [messages]);
+        return [
+            ...local,
+            ...remote.filter(
+                m => !seen.has(`${m.role}:${m.content}`)
+            ),
+        ];
+    }
 
     useEffect(() => {
-        const sendHandler = async (e: Event) => {
-            const detail = (e as CustomEvent<string>).detail;
+        const init = async () => {
+            try {
+                // fetch chats list from backend
+                const res = await fetch("http://127.0.0.1:8000/api/chats", {
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
+                    },
+                });
 
-            const userMessage: Message = {
-                role: "user",
-                content: detail,
-            };
+                const chats = await res.json();
 
-            const chats = loadChats();
-            const activeId = getActiveChatId();
+                if (chats.length > 0) {
+                    const firstChatId = chats[0].id;
+                    setActiveChatId(firstChatId);
 
-            if (activeId) {
-                const chat = chats.find((c: StoredChat) => c.id === activeId);
-
-                // Auto-title only if not already titled
-                if (chat && !chat.title) {
-                    chat.title = generateTitleFromMessage(detail);
-                    saveChats([...chats]);
+                    const msgs = await fetchMessages(firstChatId);
+                    setMessages(msgs);
                 }
+            } catch (err) {
+                console.error("Failed to init chat", err);
+            }
+        };
+
+        init();
+    }, []);
+
+    // 🔄 Load messages when chat changes
+    useEffect(() => {
+        const switchHandler = async (e: Event) => {
+            const chatId = (e as CustomEvent<string | null>).detail;
+            if (!chatId) {
+                setActiveChatId(null);
+                setMessages([]);
+                return;
             }
 
-            // 1️⃣ Show user message immediately
-            setMessages((prev) => [...prev, userMessage]);
+            // 🔒 Prevent cross-chat bleed
+            activeChatRef.current = chatId;
+            setActiveChatId(chatId);
+            setMessages([]);          // ✅ RESET messages
             setIsTyping(true);
 
             try {
-                // 2️⃣ Call backend
-                const data = await sendQuery(detail);
+                const remoteMessages = await fetchMessages(chatId);
 
-                // 3️⃣ Handle backend response
+                // ⚠️ Guard against race conditions
+                if (activeChatRef.current !== chatId) return;
+
+                setMessages(remoteMessages);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsTyping(false);
+            }
+        };
+
+        window.addEventListener("switch-chat", switchHandler);
+        return () => window.removeEventListener("switch-chat", switchHandler);
+    }, []);
+
+    useEffect(() => {
+        const newChatHandler = async (e: Event) => {
+            const chatId = (e as CustomEvent<string>).detail;
+
+            setActiveChatId(chatId);
+            setMessages([]);
+        };
+
+        window.addEventListener("new-chat", newChatHandler);
+        return () => window.removeEventListener("new-chat", newChatHandler);
+    }, []);
+
+    // 📤 Handle user message
+    useEffect(() => {
+        const sendHandler = async (e: Event) => {
+            const content = (e as CustomEvent<string>).detail;
+
+            // 🚫 If no chat yet, create one first
+            let chatId = activeChatId;
+
+            if (!chatId) {
+                const res = await createChat();
+                chatId = res.id;
+                setActiveChatId(chatId);
+
+                // Notify sidebar
+                window.dispatchEvent(new Event("chats-updated"));
+
+                // Switch to new chat
+                window.dispatchEvent(
+                    new CustomEvent("switch-chat", { detail: chatId })
+                );
+            }
+
+            if (!chatId) return;
+
+            // ✅ 1️⃣ Optimistically add USER message
+            setMessages((prev) => [
+                ...prev,
+                { role: "user", content }
+            ]);
+
+            setIsTyping(true);
+
+            try {
+                const data = await sendQuery(content, chatId);
+
+                // ✅ 2️⃣ Append ASSISTANT response
                 if (data.sql) {
                     setMessages((prev) => [
                         ...prev,
@@ -119,20 +166,12 @@ export default function ChatMessages() {
                             content: data.questions.join(" "),
                         },
                     ]);
-                } else if (data.error) {
-                    setMessages((prev) => [
-                        ...prev,
-                        {
-                            role: "assistant",
-                            content: "I couldn’t generate SQL for that query.",
-                        },
-                    ]);
                 } else {
                     setMessages((prev) => [
                         ...prev,
                         {
                             role: "assistant",
-                            content: "Unexpected response from backend.",
+                            content: "I couldn’t generate SQL for that query.",
                         },
                     ]);
                 }
@@ -142,7 +181,7 @@ export default function ChatMessages() {
                     ...prev,
                     {
                         role: "assistant",
-                        content: "Error connecting to the backend.",
+                        content: "Error connecting to backend.",
                     },
                 ]);
             } finally {
@@ -150,49 +189,14 @@ export default function ChatMessages() {
             }
         };
 
-        const newChatHandler = () => {
-            const chats = loadChats();
-
-            const newChatId = uuidv4();
-            const newChat: StoredChat = {
-                id: newChatId,
-                createdAt: Date.now(),
-                messages: [],
-            };
-
-            saveChats([...chats, newChat]);
-            setActiveChatId(newChatId);
-
-            setMessages([]);
-            setIsTyping(false);
-        };
-
-        const switchChatHandler = (e: Event) => {
-            const chatId = (e as CustomEvent<string>).detail;
-            const chats = loadChats();
-
-            const chat = chats.find((c: StoredChat) => c.id === chatId);
-            if (!chat) return;
-
-            setMessages(chat.messages);
-            setIsTyping(false);
-        };
-
         window.addEventListener("send-message", sendHandler);
-        window.addEventListener("new-chat", newChatHandler);
-        window.addEventListener("switch-chat", switchChatHandler);
+        return () => window.removeEventListener("send-message", sendHandler);
+    }, [activeChatId]);
 
-        return () => {
-            window.removeEventListener("send-message", sendHandler);
-            window.removeEventListener("new-chat", newChatHandler);
-            window.removeEventListener("switch-chat", switchChatHandler);
-        };
-    }, []);
-
-    if (messages.length === 0) {
+    if (!activeChatId) {
         return (
             <div className="mx-auto max-w-3xl text-center text-muted-foreground">
-                Start a new chat by asking a question about your data.
+                Select or create a chat to begin.
             </div>
         );
     }
@@ -204,7 +208,7 @@ export default function ChatMessages() {
                     key={idx}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    transition={{ duration: 0.2 }}
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                     <div
@@ -215,12 +219,7 @@ export default function ChatMessages() {
                     >
                         {msg.content}
 
-                        {msg.sql && (
-                            <div className="mt-3">
-                                <SqlMessage sql={msg.sql} />
-                            </div>
-                        )}
-
+                        {msg.sql && <SqlMessage sql={msg.sql} />}
                         {msg.results && (
                             <QueryResults
                                 columns={msg.results.columns}
@@ -233,9 +232,8 @@ export default function ChatMessages() {
 
             {isTyping && (
                 <div className="flex justify-start">
-                    <div className="max-w-[80%] rounded-lg bg-muted px-4 py-3">
+                    <div className="rounded-lg bg-muted px-4 py-3">
                         <TypingIndicator />
-                        {/* <ChatSkeleton /> */}
                     </div>
                 </div>
             )}

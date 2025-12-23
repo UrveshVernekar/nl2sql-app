@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Trash2, Pencil } from "lucide-react";
-import { loadChats, setActiveChatId, getActiveChatId, deleteChat, renameChat } from "@/lib/chat-storage";
 import {
     AlertDialog,
     AlertDialogContent,
@@ -16,7 +15,12 @@ import {
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
-/* eslint-disable react-hooks/set-state-in-effect */
+import {
+    fetchChats,
+    createChat,
+    deleteChat,
+    renameChat,
+} from "@/lib/api";
 
 interface SidebarChat {
     id: string;
@@ -26,35 +30,113 @@ interface SidebarChat {
 
 export default function Sidebar() {
     const [chats, setChats] = useState<SidebarChat[]>([]);
-    const [activeChatId, setActiveChatIdState] = useState<string | null>(null);
+    const [activeChatId, setActiveChatId] = useState<string | null>(null);
+
     const [editingId, setEditingId] = useState<string | null>(null);
     const [draftTitle, setDraftTitle] = useState("");
+
     const [deleteTarget, setDeleteTarget] = useState<SidebarChat | null>(null);
 
+    /* ---------------------------
+       Load chats on mount
+    ---------------------------- */
     useEffect(() => {
-        setChats(loadChats());
-        setActiveChatIdState(getActiveChatId());
+        fetchChats()
+            .then((data) => {
+                setChats(data);
+
+                if (data.length > 0) {
+                    setActiveChatId(data[0].id);
+                    window.dispatchEvent(
+                        new CustomEvent("switch-chat", { detail: data[0].id })
+                    );
+                }
+            })
+            .catch(console.error);
     }, []);
 
-    const handleNewChat = () => {
-        window.dispatchEvent(new CustomEvent("new-chat"));
+    useEffect(() => {
+        const refreshChats = async () => {
+            const data = await fetchChats();
+            setChats(data);
+        };
 
-        setTimeout(() => {
-            setChats(loadChats());
-            setActiveChatIdState(getActiveChatId());
-        }, 0);
+        window.addEventListener("chats-updated", refreshChats);
+
+        return () => {
+            window.removeEventListener("chats-updated", refreshChats);
+        };
+    }, []);
+
+    /* ---------------------------
+       Create new chat
+    ---------------------------- */
+    const handleNewChat = async () => {
+        const res = await createChat();
+
+        const updated = await fetchChats();
+        setChats(updated);
+        setActiveChatId(res.id);
+
+        window.dispatchEvent(new Event("chats-updated"));
+
+        window.dispatchEvent(
+            new CustomEvent("switch-chat", { detail: res.id })
+        );
     };
 
+    /* ---------------------------
+       Select chat
+    ---------------------------- */
     const handleSelectChat = (chatId: string) => {
         setActiveChatId(chatId);
-        setActiveChatIdState(chatId);
+
         window.dispatchEvent(
             new CustomEvent("switch-chat", { detail: chatId })
         );
     };
 
+    /* ---------------------------
+       Rename chat
+    ---------------------------- */
+    const handleRename = async (chatId: string) => {
+        await renameChat(chatId, draftTitle || "New chat");
+
+        const updated = await fetchChats();
+        setChats(updated);
+
+        setEditingId(null);
+    };
+
+    /* ---------------------------
+       Delete chat
+    ---------------------------- */
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+
+        await deleteChat(deleteTarget.id);
+
+        const updated = await fetchChats();
+        setChats(updated);
+
+        if (updated.length > 0) {
+            setActiveChatId(updated[0].id);
+            window.dispatchEvent(
+                new CustomEvent("switch-chat", { detail: updated[0].id })
+            );
+        } else {
+            setActiveChatId(null);
+            window.dispatchEvent(
+                new CustomEvent("switch-chat", { detail: null })
+            );
+        }
+
+        setDeleteTarget(null);
+    };
+
     return (
         <aside className="w-64 flex-col border-r bg-muted/40 flex">
+            {/* Header */}
             <div className="flex items-center justify-between p-4 font-semibold">
                 <span>NL2SQL</span>
                 <Button
@@ -66,6 +148,8 @@ export default function Sidebar() {
                     <Plus size={16} />
                 </Button>
             </div>
+
+            {/* Chat list */}
             <ScrollArea className="flex-1 px-2">
                 <div className="space-y-1">
                     {chats.map((chat) => (
@@ -74,26 +158,16 @@ export default function Sidebar() {
                             className={`group flex items-center rounded-md px-1 ${chat.id === activeChatId ? "bg-muted" : ""
                                 }`}
                         >
-                            {/* TITLE / EDIT INPUT */}
+                            {/* Title / Edit */}
                             {editingId === chat.id ? (
                                 <input
                                     autoFocus
                                     value={draftTitle}
                                     onChange={(e) => setDraftTitle(e.target.value)}
-                                    onBlur={() => {
-                                        renameChat(chat.id, draftTitle || "New chat");
-                                        setChats(loadChats());
-                                        setEditingId(null);
-                                    }}
+                                    onBlur={() => handleRename(chat.id)}
                                     onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            renameChat(chat.id, draftTitle || "New chat");
-                                            setChats(loadChats());
-                                            setEditingId(null);
-                                        }
-                                        if (e.key === "Escape") {
-                                            setEditingId(null);
-                                        }
+                                        if (e.key === "Enter") handleRename(chat.id);
+                                        if (e.key === "Escape") setEditingId(null);
                                     }}
                                     className="flex-1 rounded bg-background px-2 py-1 text-sm outline-none"
                                 />
@@ -104,24 +178,24 @@ export default function Sidebar() {
                                         }`}
                                     onClick={() => handleSelectChat(chat.id)}
                                 >
-                                    {chat.title ?? "New chat"}
+                                    {chat.title || "New chat"}
                                 </Button>
                             )}
 
-                            {/* EDIT BUTTON */}
+                            {/* Edit */}
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-blue-600 dark:text-blue-400"
+                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-blue-600"
                                 onClick={() => {
                                     setEditingId(chat.id);
-                                    setDraftTitle(chat.title ?? "");
+                                    setDraftTitle(chat.title || "");
                                 }}
                             >
                                 <Pencil size={14} />
                             </Button>
 
-                            {/* DELETE BUTTON */}
+                            {/* Delete */}
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -135,11 +209,10 @@ export default function Sidebar() {
                 </div>
             </ScrollArea>
 
+            {/* Delete confirmation */}
             <AlertDialog
                 open={!!deleteTarget}
-                onOpenChange={(open) => {
-                    if (!open) setDeleteTarget(null);
-                }}
+                onOpenChange={(open) => !open && setDeleteTarget(null)}
             >
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -149,24 +222,15 @@ export default function Sidebar() {
                             <span className="font-semibold">
                                 {deleteTarget?.title || "this chat"}
                             </span>
-                            . This action cannot be undone.
+                            .
                         </AlertDialogDescription>
                     </AlertDialogHeader>
 
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-
                         <AlertDialogAction
-                            className="bg-red-500 text-white hover:bg-red-600 dark:text-destructive-foreground"
-                            onClick={() => {
-                                if (!deleteTarget) return;
-
-                                deleteChat(deleteTarget.id);
-                                setChats(loadChats());
-                                setActiveChatIdState(getActiveChatId());
-                                window.dispatchEvent(new CustomEvent("switch-chat"));
-                                setDeleteTarget(null);
-                            }}
+                            className="bg-red-500 text-white hover:bg-red-600"
+                            onClick={confirmDelete}
                         >
                             Delete
                         </AlertDialogAction>
